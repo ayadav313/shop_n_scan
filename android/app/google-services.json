@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "954628617989",
+    "project_id": "shopnscan-6c111",
+    "storage_bucket": "shopnscan-6c111.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:954628617989:android:2f2522000d401840eae96c",
+        "android_client_info": {
+          "package_name": "com.example.shop_n_scan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAZUChIYen40je1Tn-ZiWTH0-iNjONZrSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

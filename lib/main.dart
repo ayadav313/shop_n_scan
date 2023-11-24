@@ -7,11 +7,14 @@ import 'package:barcode_scan2/barcode_scan2.dart';
 //detect platform: iphone or android
 import 'dart:io' show Platform;
 
-//TODO: Connect to firebase
+import 'package:shop_n_scan/firebase_options.dart';
 
 //TODO: Make search button to search with text to find and add items
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  //Connect to firebase
+  await initializeFirebase(); // Initialize Firebase
   runApp(MyApp());
 }
 
@@ -82,21 +85,19 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // if good, check if barcode in inventory and open item details screen with item
     if (result.type == ResultType.Barcode) {
-
       String scannedBarcode = result.rawContent;
       // IF IPHONE DELETE ZERO FROM START OF scanned barcode
       // Check if running on iPhone and remove leading zero
       // Weird weird error. on iphones for certain barcodes it adds a 0 to start
       if (Platform.isIOS) {
-        if(scannedBarcode.substring(0,1)=="0")
-        {
+        if (scannedBarcode.substring(0, 1) == "0") {
           scannedBarcode = scannedBarcode.substring(1);
         }
-        }
+      }
       // Success
       setState(() {
         for (int i = 0; i < widget.inventory.length; i++) {
-          String check = widget.inventory[i].barcode;
+          // String check = widget.inventory[i].barcode;
           if (scannedBarcode == widget.inventory[i].barcode) {
             // if already in cart
             bool inCart = false;
