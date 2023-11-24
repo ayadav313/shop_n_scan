@@ -4,9 +4,12 @@ import 'package:flutter/services.dart';
 // Barcode Scanning Package
 import 'package:barcode_scan2/barcode_scan2.dart';
 
-//TODO: search button to search with text to find and add items
+//detect platform: iphone or android
+import 'dart:io' show Platform;
 
-//TODO: Animate buttons to expand (show text when clicked)
+//TODO: Connect to firebase
+
+//TODO: Make search button to search with text to find and add items
 
 void main() {
   runApp(MyApp());
@@ -27,10 +30,10 @@ class Sale {
   Sale(this.item, this.quantity);
 }
 
-//TODO Get Inventory from Firebase Firestore
+//TODO : Get Inventory from Firebase Firestore
 // Currently hardcoded, List<item> inventory needs to be filled from firestore
 
-//TODO Handle payments with Firebase
+//TODO : Handle payments with Firebase
 
 class MyApp extends StatelessWidget {
   final List<Item> items = [
@@ -73,20 +76,32 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   Future<void> _scanBarcode() async {
-    // TODO: barcode scanning logic here
+    // barcode scanning logic here
     // print('Scanning barcode...');
     var result = await BarcodeScanner.scan();
 
     // if good, check if barcode in inventory and open item details screen with item
     if (result.type == ResultType.Barcode) {
+
+      String scannedBarcode = result.rawContent;
+      // IF IPHONE DELETE ZERO FROM START OF scanned barcode
+      // Check if running on iPhone and remove leading zero
+      // Weird weird error. on iphones for certain barcodes it adds a 0 to start
+      if (Platform.isIOS) {
+        if(scannedBarcode.substring(0,1)=="0")
+        {
+          scannedBarcode = scannedBarcode.substring(1);
+        }
+        }
       // Success
       setState(() {
         for (int i = 0; i < widget.inventory.length; i++) {
-          if (result.rawContent == widget.inventory[i].barcode) {
+          String check = widget.inventory[i].barcode;
+          if (scannedBarcode == widget.inventory[i].barcode) {
             // if already in cart
             bool inCart = false;
             for (int j = 0; j < widget.cart.length; j++) {
-              if (result.rawContent == widget.cart[j].item.barcode) {
+              if (scannedBarcode == widget.cart[j].item.barcode) {
                 widget.cart[j].quantity += 1;
                 inCart = true;
               }
@@ -195,7 +210,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-//TODO sale detail screen
+//sale detail screen
 
 class DetailScreen extends StatefulWidget {
   final Sale sale;
@@ -324,7 +339,6 @@ class _DetailScreenState extends State<DetailScreen> {
       widget.sale.quantity = newQuantity;
     });
     Navigator.pop(context, newQuantity); // Send back the updated quantity
-    //TODO: fix main to handle newQuantity
   }
 }
 
