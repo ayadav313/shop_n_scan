@@ -1,5 +1,13 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_maps_webservice/geocoding.dart';
+import 'package:google_maps_webservice/places.dart';
+import 'package:geolocator/geolocator.dart';
 
 // Barcode Scanning Package
 import 'package:barcode_scan2/barcode_scan2.dart';
@@ -14,16 +22,15 @@ import 'package:shop_n_scan/firebase_options.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   //Connect to firebase
-  await initializeFirebase(); // Initialize Firebase
+  await Firebase.initializeApp(options: defaultFirebaseOptions);
   runApp(MyApp());
 }
 
 class Item {
   // This class represents grocery store items
-
-  final String name, barcode, nutritionLabel;
+  final String name, barcode, nutritionLabel, url;
   final double price;
-  const Item(this.name, this.barcode, this.price, this.nutritionLabel);
+  Item(this.name, this.barcode, this.price, this.nutritionLabel, this.url);
 }
 
 class Sale {
@@ -33,44 +40,110 @@ class Sale {
   Sale(this.item, this.quantity);
 }
 
-//TODO : Get Inventory from Firebase Firestore
-// Currently hardcoded, List<item> inventory needs to be filled from firestore
+// Reference to collection
+final itemsRef = FirebaseFirestore.instance.collection('ALDI');
+const apiKey = 'AIzaSyDbVBgQl-2vGpNSFzlx_Ocez5TD1U4PDVc';
+final places = GoogleMapsPlaces(apiKey: apiKey);
 
-//TODO : Handle payments with Firebase
+Future<List<PlacesSearchResult>> searchPlaces() async {
+  Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high);
+
+  final result = await places.searchNearbyWithRadius(
+    Location(lat: position.latitude, lng: position.longitude),
+    5000,
+    type: "supermarket",
+  );
+  if (result.status == "OK") {
+    return result.results;
+  } else {
+    throw Exception(result.errorMessage);
+  }
+}
+
+//TODO : Get Inventory from Firebase Firestore
+Future<List<Item>> fetchItemsFromFirestore(String a) async {
+  final itemsRef = FirebaseFirestore.instance.collection(a);
+
+  try {
+    // Access the 'inventory' collection and get the documents
+    QuerySnapshot querySnapshot = await itemsRef.get();
+
+    // Extract the documents into Item objects
+    List<Item> items = querySnapshot.docs.map((doc) {
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+      print(data['price'].runtimeType);
+      // print(data['name'].runtimeType);
+      // print(data['label'].runtimeType);
+      // print(data['barcode'].runtimeType);
+      return Item(
+        data['name'] ?? '',
+        data['barcode'] ?? '',
+        data['price'] ?? 0.0,
+        data['label'] ?? '',
+        data['url'] ?? ''
+      );
+    }).toList();
+
+    return items;
+  } catch (error) {
+    // Handle errors here if needed
+    print('Error fetching items: $error');
+    return []; // Return an empty list in case of error
+  }
+}
 
 class MyApp extends StatelessWidget {
-  final List<Item> items = [
-    const Item("apple", "079737210150", 1.09, "temp/apple.jpg"),
-    const Item("guava", "020357122682", 2.25, "temp/guava.jpg"),
-    const Item("Korean pear", "4337185143489", 5.25, "temp/korean_pear.jpg"),
-
-    // Add more items to the items list if needed
-  ];
-
-  final List<Sale> cart = [];
+  //create method to get items from firestore and populate list
+  Future<List<PlacesSearchResult>> places = searchPlaces();
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Shop and Scan',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSwatch(primarySwatch: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSwatch(primarySwatch: Colors.deepOrange),
       ),
-      home: MyHomePage(title: 'Home', inventory: items, cart: cart),
+      home: FutureBuilder(
+        future: places,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            // While data is being fetched, show a loading indicator or placeholder
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          } else if (snapshot.hasError) {
+            // Handle errors if any
+            return const Scaffold(
+              body: Center(
+                child: Text('Error fetching data'),
+              ),
+            );
+          } else {
+            // If data is fetched successfully, show the home page
+
+            return MyHomePage(
+              title: 'Home',
+              places: snapshot.data ?? [], // Use fetched data or empty list
+            );
+          }
+        },
+      ),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
   final String title;
-  final List<Item> inventory;
-  final List<Sale> cart;
+  final List<PlacesSearchResult> places;
 
-  MyHomePage(
+  const MyHomePage(
       {Key? key,
       required this.title,
-      required this.inventory,
-      required this.cart})
+      required this.places
+      })
       : super(key: key);
 
   @override
@@ -78,10 +151,178 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    // TODO: Handle the case when the whole ListView is tapped
+                  },
+                  child: ListView.builder(
+                    itemCount: widget.places.length,
+                    itemBuilder: (context, index) {
+                      return GestureDetector(
+                        onTap: () {
+                          // Handle tap on individual list item
+                          _handleListItemTap(index);
+                        },
+                        child: Column(
+                          children: [
+                            Image(
+                              image: Image.network(widget
+                                          .places[index].photos.isNotEmpty
+                                      ? 'https://maps.googleapis.com/maps/api/place/photo?photoreference=${widget.places[index].photos[0].photoReference}&maxwidth=300&key=$apiKey'
+                                      : 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Missing-image-232x150.png')
+                                  .image
+                            ),
+                            ListTile(
+                              title: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.places[index].name,
+                                    style: const TextStyle(
+                                      fontSize: 18.0,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleListItemTap(int index) async {
+    // Handle the tap on the list item with the given index
+    print('Tapped on item at index: ${widget.places[index].name}');
+    // Add your logic here to navigate or perform actions based on the tapped item
+    //widget.inventory=fetchItemsFromFirestore(widget.places[index].name).then((value) => value) as List<Item>;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CartScreen(
+          collection: widget.places[index].name, // Pass the selected index to the next screen
+        ),
+      ),
+    );
+  }
+  
+
+  /*@override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Expanded(
+                child: GestureDetector(
+                    // TODO: ADD CART SCREEN ON TAP
+                    onTap: () {
+                      //print(widget.places[0].name);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CartScreen(inventory: widget.inventory),
+                        ),
+                      );
+                    },
+                    child: ListView.builder(
+                      itemCount: widget.places.length,
+                      itemBuilder: (context, index) {
+                        return Column(children: [
+                          Image(
+                              image: Image.network(widget
+                                          .places[index].photos.isNotEmpty
+                                      ? 'https://maps.googleapis.com/maps/api/place/photo?photoreference=${widget.places[index].photos[0].photoReference}&maxwidth=300&key=$apiKey'
+                                      : 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Missing-image-232x150.png')
+                                  .image),
+                          ListTile(
+                            title: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.places[index].name,
+                                  style: const TextStyle(
+                                      fontSize: 18.0,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          )
+                        ]);
+                      },
+                    )),
+              ),
+             ],
+          ),
+        ),
+      ),
+    );
+  }*/
+}
+
+//sale detail screen
+
+class CartScreen extends StatefulWidget {
+  String collection;
+  List<Sale> cart = [];
+
+  CartScreen({Key? key, required this.collection}) : super(key: key);
+
+  @override
+  _CartScreenState createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> {
+  late TextEditingController _quantityController;
+
+  String currentCollection = ''; // Define a variable to hold the collection name
+  Future<List<Item>> marketInv = Future<List<Item>>.value([]);
+  @override
+  void initState() {
+    super.initState();
+    currentCollection = widget.collection;
+    marketInv = fetchItemsFromFirestore(currentCollection).then((value) => value);
+  }
+
+  @override
+  void dispose() {
+    _quantityController.dispose();
+    super.dispose();
+  }
+
   Future<void> _scanBarcode() async {
-    // barcode scanning logic here
     // print('Scanning barcode...');
     var result = await BarcodeScanner.scan();
+    print(result.type);
 
     // if good, check if barcode in inventory and open item details screen with item
     if (result.type == ResultType.Barcode) {
@@ -95,11 +336,15 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
       // Success
+      List<Item> _marketInv = await marketInv;
       setState(() {
-        for (int i = 0; i < widget.inventory.length; i++) {
-          // String check = widget.inventory[i].barcode;
-          if (scannedBarcode == widget.inventory[i].barcode) {
+        print(_marketInv.length);
+        for (int i = 0; i < _marketInv.length; i++) {
+          // String check = marketInv[i].barcode;
+          print(_marketInv[i].barcode);
+          if (scannedBarcode == _marketInv[i].barcode) {
             // if already in cart
+
             bool inCart = false;
             for (int j = 0; j < widget.cart.length; j++) {
               if (scannedBarcode == widget.cart[j].item.barcode) {
@@ -110,7 +355,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
             //if not already in cart
             if (!inCart) {
-              widget.cart.add(Sale(widget.inventory[i], 1));
+              widget.cart.add(Sale(_marketInv[i], 1));
             }
           }
         }
@@ -124,56 +369,55 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: const Text('Details'),
       ),
-      body: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Expanded(
-                child: ListView.builder(
-                  itemCount: widget.cart.length,
-                  itemBuilder: (context, index) {
-                    return ListTile(
-                      leading: Text(
-                        // "${widget.cart[index].item.price * widget.cart[index].quantity}\$",
-                        "${(widget.cart[index].item.price * widget.cart[index].quantity).toStringAsFixed(2)}\$",
-                        style: TextStyle(
-                          fontSize: 18.0, // Adjust the font size as needed
-                          fontWeight: FontWeight
-                              .bold, // Optional: Modify the font weight if desired
-                        ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              itemCount: widget.cart.length,
+              itemBuilder: (context, index) {
+                return Column(children: [
+                  Image(image: Image.network(widget.cart[index].item.url).image, width: 200.00),
+                  ListTile(
+                  leading: Text(
+                    // "${widget.cart[index].item.price * widget.cart[index].quantity}\$",
+                    "${(widget.cart[index].item.price * widget.cart[index].quantity).toStringAsFixed(2)}\$",
+                    style: const TextStyle(
+                      
+                      fontSize: 18.0, // Adjust the font size as needed
+                      fontWeight: FontWeight
+                          .bold, // Optional: Modify the font weight if desired
+                    ),
+                  ),
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.cart[index].item.name),
+                    ],
+                  ),
+                  subtitle: Text("Quantity: ${widget.cart[index].quantity}"),
+                  onTap: () async {
+                    final updatedQuantity = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DetailScreen(widget.cart[index]),
                       ),
-                      title: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(widget.cart[index].item.name),
-                        ],
-                      ),
-                      subtitle:
-                          Text("Quantity: ${widget.cart[index].quantity}"),
-                      onTap: () async {
-                        final updatedQuantity = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                DetailScreen(widget.cart[index]),
-                          ),
-                        );
-
-                        if (updatedQuantity != null) {
-                          setState(() {
-                            widget.cart[index].quantity = updatedQuantity;
-                          });
-                        }
-                      },
                     );
+
+                    if (updatedQuantity != null) {
+                      setState(() {
+                        widget.cart[index].quantity = updatedQuantity;
+                      });
+                    }
                   },
-                ),
-              ),
-              Row(
+                )
+                ]
+                );
+              },
+            ),
+          ),
+           Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   ElevatedButton(
@@ -182,7 +426,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       print('Plus button pressed!');
                       _scanBarcode();
                     },
-                    child: Text(
+                    child: const Text(
                       '+',
                       style: TextStyle(fontSize: 20.0),
                     ),
@@ -198,20 +442,16 @@ class _MyHomePageState extends State<MyHomePage> {
                       );
                       print('Cart button pressed!');
                     },
-                    icon: Icon(Icons.shopping_cart),
-                    label: Text('Checkout'),
+                    icon: const Icon(Icons.shopping_cart),
+                    label: const Text('Checkout'),
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
 }
-
-//sale detail screen
 
 class DetailScreen extends StatefulWidget {
   final Sale sale;
@@ -226,7 +466,7 @@ class _DetailScreenState extends State<DetailScreen> {
   late TextEditingController _quantityController;
 
   @override
-  void initState() {
+  void initState() async {
     super.initState();
     _quantityController =
         TextEditingController(text: widget.sale.quantity.toString());
@@ -255,12 +495,12 @@ class _DetailScreenState extends State<DetailScreen> {
                   Text(
                     widget.sale.item.name,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 24.0,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  SizedBox(height: 20.0),
+                  const SizedBox(height: 20.0),
                   widget.sale.item.nutritionLabel.isNotEmpty
                       ? Image.asset(
                           widget.sale.item.nutritionLabel,
@@ -268,12 +508,12 @@ class _DetailScreenState extends State<DetailScreen> {
                           height: 200,
                           fit: BoxFit.cover,
                         )
-                      : SizedBox(), // Placeholder if no image available
-                  SizedBox(height: 20.0),
+                      : const SizedBox(), // Placeholder if no image available
+                  const SizedBox(height: 20.0),
                   Text(
                     "${widget.sale.item.price}\$",
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 24.0,
                       fontWeight: FontWeight.bold,
                     ),
@@ -291,17 +531,17 @@ class _DetailScreenState extends State<DetailScreen> {
                 Text(
                   "Quantity: ${widget.sale.quantity}\nTotal price: ${widget.sale.item.price * widget.sale.quantity}\$",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 20.0,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 20.0),
+                const SizedBox(height: 20.0),
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
                   child: TextField(
                     controller: _quantityController,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       labelText: "Edit quantity",
                       border: OutlineInputBorder(),
                     ),
@@ -312,7 +552,7 @@ class _DetailScreenState extends State<DetailScreen> {
                     ],
                   ),
                 ),
-                SizedBox(height: 10.0),
+                const SizedBox(height: 10.0),
                 ElevatedButton(
                   onPressed: _updateQuantity,
                   // () {
@@ -323,7 +563,7 @@ class _DetailScreenState extends State<DetailScreen> {
                   //             widget.sale.quantity;
                   //   });
                   // }
-                  child: Text('Update Quantity'),
+                  child: const Text('Update Quantity'),
                 ),
               ],
             ),
@@ -394,7 +634,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Receipt'),
+        title: const Text('Receipt'),
       ),
       body: ListView.builder(
         itemCount: widget.cart.length,
@@ -418,11 +658,11 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Divider(),
+            const Divider(),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
+                const Text(
                   'Pre-tax Total:',
                   style: TextStyle(
                     fontSize: 18,
@@ -431,17 +671,17 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                 ),
                 Text(
                   '${preTaxTotal.toStringAsFixed(2)}\$',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 18,
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
+                const Text(
                   'Tax: ',
                   style: TextStyle(
                     fontSize: 18,
@@ -450,18 +690,18 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                 ),
                 Text(
                   '${taxAmount.toStringAsFixed(2)}',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 16,
                   ),
                   textAlign: TextAlign.right,
                 ),
               ],
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
+                const Text(
                   'Total Price: ',
                   style: TextStyle(
                     fontSize: 18,
@@ -470,7 +710,7 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                 ),
                 Text(
                   totalPriceController.text,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -478,13 +718,13 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                 ),
               ],
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
                 // Implement your payment logic here
                 _processPayment();
               },
-              child: Text('Pay'),
+              child: const Text('Pay'),
             ),
           ],
         ),
@@ -498,3 +738,89 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     // Example: You might navigate to a success screen or perform further actions
   }
 }
+
+const defaultFirebaseOptions = FirebaseOptions(
+  apiKey: 'AIzaSyAZUChIYen40je1Tn-ZiWTH0-iNjONZrSM',
+  appId: '1:954628617989:android:2f2522000d401840eae96c',
+  messagingSenderId: '954628617989',
+  projectId: 'shopnscan-6c111',
+  databaseURL: 'https://shopnscan-6c111-default-rtdb.firebaseio.com/',
+);
+
+  // --- ON TAP ---
+  // onTap: () async {
+  //   final updatedQuantity = await Navigator.push(
+  //     context,
+  //     MaterialPageRoute(
+  //       builder: (context) =>
+  //           DetailScreen(widget.cart[index]),
+  //     ),
+  //   );
+
+  //   if (updatedQuantity != null) {
+  //     setState(() {
+  //       widget.cart[index].quantity = updatedQuantity;
+  //     });
+  //   }
+  // },
+
+  // DISAPLAYH ITEMS
+  // Expanded(
+  //   child: ListView.builder(
+  //     itemCount: widget.cart.length,
+  //     itemBuilder: (context, index) {
+  //       return ListTile(
+  //         leading: Text(
+  //           // "${widget.cart[index].item.price * widget.cart[index].quantity}\$",
+  //           "${(widget.cart[index].item.price * widget.cart[index].quantity).toStringAsFixed(2)}\$",
+  //           style: const TextStyle(
+  //             fontSize: 18.0, // Adjust the font size as needed
+  //             fontWeight: FontWeight
+  //                 .bold, // Optional: Modify the font weight if desired
+  //           ),
+  //         ),
+  //         title: Column(
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             Text(widget.cart[index].item.name),
+  //           ],
+  //         ),
+  //         subtitle:
+  //             Text("Quantity: ${widget.cart[index].quantity}"),
+  //         onTap: () async {
+  //           final updatedQuantity = await Navigator.push(
+  //             context,
+  //             MaterialPageRoute(
+  //               builder: (context) =>
+  //                   DetailScreen(widget.cart[index]),
+  //             ),
+  //           );
+
+  //           if (updatedQuantity != null) {
+  //             setState(() {
+  //               widget.cart[index].quantity = updatedQuantity;
+  //             });
+  //           }
+  //         },
+  //       );
+  //     },
+  //   ),
+  // ),
+
+  // --- MOCK DATA ---
+  // final List<Item> items = [
+  //   const Item("apple", "079737210150", 1.09, "temp/apple.jpg"),
+  //   const Item("guava", "020357122682", 2.25, "temp/guava.jpg"),
+  //   const Item("Korean pear", "4337185143489", 5.25, "temp/korean_pear.jpg"),
+  //   const Item("Adapter","SMBHAA27715", 10.50, "temp/charge.jpg"),
+  //   const Item("Orbit Gum","02248400", 2.50, "temp/gum.jpg")
+  // ];
+    //DatabaseReference database = FirebaseDatabase.instance.ref();
+    /*for (var item in items) {
+      database.child('items').push().set({
+        'name': item.name,
+        'barcode': item.barcode,
+        'price': item.price,
+        'nutritionLabel': item.nutritionLabel,
+      });
+    }*/
