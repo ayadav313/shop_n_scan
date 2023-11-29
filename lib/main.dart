@@ -311,11 +311,11 @@ class _CartScreenState extends State<CartScreen> {
     super.dispose();
   }
 
-  Future<void> _scanBarcode() async {
+  Future<bool> _scanBarcode() async {
     print('Scanning barcode...');
     var result = await BarcodeScanner.scan();
+    bool inCart = false;
     print(result.type);
-
     // if good, check if barcode in inventory and open item details screen with item
     // result.type == ResultType.Barcode
     if (result.type == ResultType.Barcode) {
@@ -330,33 +330,37 @@ class _CartScreenState extends State<CartScreen> {
       }
       // Success
       List<Item> _marketInv = await marketInv;
-      setState(() {
         print(_marketInv.length);
         for (int i = 0; i < _marketInv.length; i++) {
           // String check = marketInv[i].barcode;
           print(_marketInv[i].barcode);
           if (scannedBarcode == _marketInv[i].barcode) {
             // if already in cart
-
-            bool inCart = false;
             for (int j = 0; j < widget.cart.length; j++) {
               if (scannedBarcode == widget.cart[j].item.barcode) {
-                widget.cart[j].quantity += 1;
+                setState(() {
+              widget.cart[j].quantity += 1;
+            });
                 inCart = true;
               }
             }
 
             //if not already in cart
             if (!inCart) {
-              widget.cart.add(Sale(_marketInv[i], 1));
+              inCart = true;
+              setState(() {
+            widget.cart.add(Sale(_marketInv[i], 1));
+          });
             }
+          } else {
+            inCart = false;
           }
         }
         // print("Added an item?");
         // print(result.rawContent);
-      });
+      }
+    return inCart;
     }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -451,7 +455,20 @@ class _CartScreenState extends State<CartScreen> {
                 onPressed: () {
                   // Add your logic for the plus button here
                   print('Plus button pressed!');
-                  _scanBarcode();
+                  _scanBarcode().then((value) => value == false ? showDialog(context: context, builder: (BuildContext context) {
+                                return AlertDialog(
+                                  title: Text('Item Not Found'),
+                                  content: Text('The scanned item is not available in the inventory.'),
+                                  actions: <Widget>[
+                                    TextButton(
+                                      onPressed: () {
+                                        Navigator.of(context).pop();
+                                      },
+                                      child: Text('OK'),
+                                    ),
+                                  ],
+                                );
+                              }): '').catchError(throw Error());
                 },
                 child: const Text(
                   '+',
