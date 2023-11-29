@@ -76,13 +76,8 @@ Future<List<Item>> fetchItemsFromFirestore(String a) async {
       // print(data['name'].runtimeType);
       // print(data['label'].runtimeType);
       // print(data['barcode'].runtimeType);
-      return Item(
-        data['name'] ?? '',
-        data['barcode'] ?? '',
-        data['price'] ?? 0.0,
-        data['label'] ?? '',
-        data['url'] ?? ''
-      );
+      return Item(data['name'] ?? '', data['barcode'] ?? '',
+          data['price'] ?? 0.0, data['label'] ?? '', data['url'] ?? '');
     }).toList();
 
     return items;
@@ -139,11 +134,7 @@ class MyHomePage extends StatefulWidget {
   final String title;
   final List<PlacesSearchResult> places;
 
-  const MyHomePage(
-      {Key? key,
-      required this.title,
-      required this.places
-      })
+  const MyHomePage({Key? key, required this.title, required this.places})
       : super(key: key);
 
   @override
@@ -179,12 +170,11 @@ class _MyHomePageState extends State<MyHomePage> {
                         child: Column(
                           children: [
                             Image(
-                              image: Image.network(widget
-                                          .places[index].photos.isNotEmpty
-                                      ? 'https://maps.googleapis.com/maps/api/place/photo?photoreference=${widget.places[index].photos[0].photoReference}&maxwidth=300&key=$apiKey'
-                                      : 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Missing-image-232x150.png')
-                                  .image
-                            ),
+                                image: Image.network(widget
+                                            .places[index].photos.isNotEmpty
+                                        ? 'https://maps.googleapis.com/maps/api/place/photo?photoreference=${widget.places[index].photos[0].photoReference}&maxwidth=300&key=$apiKey'
+                                        : 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Missing-image-232x150.png')
+                                    .image),
                             ListTile(
                               title: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,12 +213,12 @@ class _MyHomePageState extends State<MyHomePage> {
       context,
       MaterialPageRoute(
         builder: (context) => CartScreen(
-          collection: widget.places[index].name, // Pass the selected index to the next screen
+          collection: widget
+              .places[index].name, // Pass the selected index to the next screen
         ),
       ),
     );
   }
-  
 
   /*@override
   Widget build(BuildContext context) {
@@ -304,13 +294,15 @@ class CartScreen extends StatefulWidget {
 class _CartScreenState extends State<CartScreen> {
   late TextEditingController _quantityController;
 
-  String currentCollection = ''; // Define a variable to hold the collection name
+  String currentCollection =
+      ''; // Define a variable to hold the collection name
   Future<List<Item>> marketInv = Future<List<Item>>.value([]);
   @override
   void initState() {
     super.initState();
     currentCollection = widget.collection;
-    marketInv = fetchItemsFromFirestore(currentCollection).then((value) => value);
+    marketInv =
+        fetchItemsFromFirestore(currentCollection).then((value) => value);
   }
 
   @override
@@ -320,11 +312,12 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Future<void> _scanBarcode() async {
-    // print('Scanning barcode...');
+    print('Scanning barcode...');
     var result = await BarcodeScanner.scan();
     print(result.type);
 
     // if good, check if barcode in inventory and open item details screen with item
+    // result.type == ResultType.Barcode
     if (result.type == ResultType.Barcode) {
       String scannedBarcode = result.rawContent;
       // IF IPHONE DELETE ZERO FROM START OF scanned barcode
@@ -378,78 +371,132 @@ class _CartScreenState extends State<CartScreen> {
               itemCount: widget.cart.length,
               itemBuilder: (context, index) {
                 return Column(children: [
-                  Image(image: Image.network(widget.cart[index].item.url).image, width: 200.00),
-                  ListTile(
-                  leading: Text(
-                    // "${widget.cart[index].item.price * widget.cart[index].quantity}\$",
-                    "${(widget.cart[index].item.price * widget.cart[index].quantity).toStringAsFixed(2)}\$",
-                    style: const TextStyle(
-                      
-                      fontSize: 18.0, // Adjust the font size as needed
-                      fontWeight: FontWeight
-                          .bold, // Optional: Modify the font weight if desired
-                    ),
-                  ),
-                  title: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(widget.cart[index].item.name),
-                    ],
-                  ),
-                  subtitle: Text("Quantity: ${widget.cart[index].quantity}"),
-                  onTap: () async {
-                    final updatedQuantity = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetailScreen(widget.cart[index]),
-                      ),
-                    );
-
-                    if (updatedQuantity != null) {
-                      setState(() {
-                        widget.cart[index].quantity = updatedQuantity;
-                      });
-                    }
-                  },
-                )
-                ]
-                );
+                  GestureDetector(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              title: const Text('Remove Item'),
+                              content: const Text(
+                                  'Do you want to remove this item from the cart?'),
+                              actions: <Widget>[
+                                TextButton(
+                                  child: const Text('Cancel'),
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                ),
+                                TextButton(
+                                  child: const Text('Remove'),
+                                  onPressed: () {
+                                    setState(() {
+                                      widget.cart.removeAt(
+                                          index); // Remove the item from the cart list
+                                    });
+                                    Navigator.of(context)
+                                        .pop(); // Close the dialog
+                                  },
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                      child: Image(
+                          image:
+                              Image.network(widget.cart[index].item.url).image,
+                          width: 200.00)),
+                  Column(children: [
+                    ListTile(
+                        leading: Text(
+                          // "${widget.cart[index].item.price * widget.cart[index].quantity}\$",
+                          "${(widget.cart[index].item.price * widget.cart[index].quantity).toStringAsFixed(2)}\$",
+                          style: const TextStyle(
+                            fontSize: 18.0, // Adjust the font size as needed
+                            fontWeight: FontWeight
+                                .bold, // Optional: Modify the font weight if desired
+                          ),
+                        ),
+                        title: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(widget.cart[index].item.name),
+                          ],
+                        ),
+                        subtitle: Row(children: [
+                          IconButton(
+                            icon: Icon(Icons.remove),
+                            onPressed: () {
+                              _decreaseQuantity(index);
+                            },
+                          ),
+                          Text("Quantity: ${widget.cart[index].quantity}"),
+                          IconButton(
+                            icon: Icon(Icons.add),
+                            onPressed: () {
+                              _increaseQuantity(index);
+                            },
+                          ),
+                        ]))
+                  ])
+                ]);
               },
             ),
           ),
-           Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  ElevatedButton(
-                    onPressed: () {
-                      // Add your logic for the plus button here
-                      print('Plus button pressed!');
-                      _scanBarcode();
-                    },
-                    child: const Text(
-                      '+',
-                      style: TextStyle(fontSize: 20.0),
-                    ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      // Add your logic for the cart button here
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ReceiptScreen(widget.cart),
-                        ),
-                      );
-                      print('Cart button pressed!');
-                    },
-                    icon: const Icon(Icons.shopping_cart),
-                    label: const Text('Checkout'),
-                  ),
-                ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              ElevatedButton(
+                onPressed: () {
+                  // Add your logic for the plus button here
+                  print('Plus button pressed!');
+                  _scanBarcode();
+                },
+                child: const Text(
+                  '+',
+                  style: TextStyle(fontSize: 20.0),
+                ),
               ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  // Add your logic for the cart button here
+                  widget.cart.isNotEmpty
+                      ? Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ReceiptScreen(widget.cart),
+                          ),
+                        )
+                      : '';
+                  print('Cart button pressed!');
+                },
+                icon: const Icon(Icons.shopping_cart),
+                label: const Text('Checkout'),
+              ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  void _increaseQuantity(int index) {
+    setState(() {
+      widget.cart[index].quantity++;
+    });
+  }
+
+  void _decreaseQuantity(int index) {
+    if (widget.cart[index].quantity > 1) {
+      setState(() {
+        widget.cart[index].quantity--;
+      });
+    } else {
+      setState(() {
+        widget.cart.removeAt(index);
+      });
+    }
   }
 }
 
