@@ -8,12 +8,18 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_maps_webservice/geocoding.dart';
 import 'package:google_maps_webservice/places.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter/services.dart';
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
 
 // Barcode Scanning Package
 import 'package:barcode_scan2/barcode_scan2.dart';
 
 //detect platform: iphone or android
-import 'dart:io' show Platform;
+import 'dart:io'
+    show HttpClient, HttpClientRequest, HttpClientResponse, Platform;
 
 import 'package:shop_n_scan/firebase_options.dart';
 
@@ -314,7 +320,6 @@ class _CartScreenState extends State<CartScreen> {
   Future<bool> _scanBarcode() async {
     print('Scanning barcode...');
     var result = await BarcodeScanner.scan();
-    bool inCart = false;
     print(result.type);
     // if good, check if barcode in inventory and open item details screen with item
     // result.type == ResultType.Barcode
@@ -330,37 +335,33 @@ class _CartScreenState extends State<CartScreen> {
       }
       // Success
       List<Item> _marketInv = await marketInv;
-        print(_marketInv.length);
-        for (int i = 0; i < _marketInv.length; i++) {
-          // String check = marketInv[i].barcode;
-          print(_marketInv[i].barcode);
-          if (scannedBarcode == _marketInv[i].barcode) {
-            // if already in cart
-            for (int j = 0; j < widget.cart.length; j++) {
-              if (scannedBarcode == widget.cart[j].item.barcode) {
-                setState(() {
-              widget.cart[j].quantity += 1;
+      print(_marketInv.length);
+      for (int i = 0; i < _marketInv.length; i++) {
+        // String check = marketInv[i].barcode;
+        print(_marketInv[i].barcode);
+        print(scannedBarcode);
+        if (scannedBarcode == _marketInv[i].barcode) {
+          bool inCart =
+              widget.cart.any((sale) => sale.item.barcode == scannedBarcode);
+          if (inCart) {
+            setState(() {
+              widget.cart
+                  .firstWhere((sale) => sale.item.barcode == scannedBarcode)
+                  .quantity += 1;
             });
-                inCart = true;
-              }
-            }
-
-            //if not already in cart
-            if (!inCart) {
-              inCart = true;
-              setState(() {
-            widget.cart.add(Sale(_marketInv[i], 1));
-          });
-            }
           } else {
-            inCart = false;
+            setState(() {
+              widget.cart.add(Sale(_marketInv[i], 1));
+            });
           }
+          return true;
         }
-        // print("Added an item?");
-        // print(result.rawContent);
       }
-    return inCart;
+      // print("Added an item?");
+      // print(result.rawContent);
     }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -455,20 +456,27 @@ class _CartScreenState extends State<CartScreen> {
                 onPressed: () {
                   // Add your logic for the plus button here
                   print('Plus button pressed!');
-                  _scanBarcode().then((value) => value == false ? showDialog(context: context, builder: (BuildContext context) {
-                                return AlertDialog(
-                                  title: Text('Item Not Found'),
-                                  content: Text('The scanned item is not available in the inventory.'),
-                                  actions: <Widget>[
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.of(context).pop();
-                                      },
-                                      child: Text('OK'),
-                                    ),
-                                  ],
-                                );
-                              }): '').catchError(throw Error());
+                  _scanBarcode().then((value) {
+                    if (value == false) {
+                      showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              title: const Text('Item Not Found'),
+                              content: const Text(
+                                  'The scanned item is not available in the inventory.'),
+                              actions: <Widget>[
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            );
+                          }).catchError(throw Error());
+                    }
+                  });
                 },
                 child: const Text(
                   '+',
@@ -518,9 +526,9 @@ class _CartScreenState extends State<CartScreen> {
 }
 
 class DetailScreen extends StatefulWidget {
-  final Sale sale;
+  final double total;
 
-  DetailScreen(this.sale);
+  DetailScreen({Key? key, required this.total}) : super(key: key);
 
   @override
   _DetailScreenState createState() => _DetailScreenState();
@@ -529,12 +537,10 @@ class DetailScreen extends StatefulWidget {
 class _DetailScreenState extends State<DetailScreen> {
   late TextEditingController _quantityController;
 
-  @override
-  void initState() async {
-    super.initState();
-    _quantityController =
-        TextEditingController(text: widget.sale.quantity.toString());
-  }
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  String _cardNumber = '';
+  String _expirationDate = '';
+  String _cvv = '';
 
   @override
   void dispose() {
@@ -545,105 +551,251 @@ class _DetailScreenState extends State<DetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Details'),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    widget.sale.item.name,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 24.0,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 20.0),
-                  widget.sale.item.nutritionLabel.isNotEmpty
-                      ? Image.asset(
-                          widget.sale.item.nutritionLabel,
-                          width: 200,
-                          height: 200,
-                          fit: BoxFit.cover,
-                        )
-                      : const SizedBox(), // Placeholder if no image available
-                  const SizedBox(height: 20.0),
-                  Text(
-                    "${widget.sale.item.price}\$",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 24.0,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Container(
-            color: Colors.grey[200],
-            padding: const EdgeInsets.symmetric(vertical: 20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+        appBar: AppBar(
+          title: const Text('Details'),
+        ),
+        body: Form(
+          key: _formKey,
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: SingleChildScrollView(
+                child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Quantity: ${widget.sale.quantity}\nTotal price: ${widget.sale.item.price * widget.sale.quantity}\$",
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 20.0,
-                    fontWeight: FontWeight.bold,
-                  ),
+                const Text(
+                  'Card Number',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 20.0),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: TextField(
-                    controller: _quantityController,
-                    decoration: const InputDecoration(
-                      labelText: "Edit quantity",
-                      border: OutlineInputBorder(),
-                    ),
-                    textAlign: TextAlign.center,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.digitsOnly
-                    ],
+                TextFormField(
+                  decoration: const InputDecoration(
+                    filled: true,
+                    fillColor: Color.fromARGB(0, 255, 255, 255),
+                    hintText: 'Enter Card Number',
+                    border: OutlineInputBorder(),
                   ),
+                  keyboardType: TextInputType.number,
+                  maxLength: 16,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Card is required';
+                    }
+                    if (value.length != 16) {
+                      return 'Card must be 16 digits';
+                    }
+                    return null; // Return null for no validation error
+                  },
+                  // Add any necessary logic here for handling card number input
                 ),
-                const SizedBox(height: 10.0),
+                const SizedBox(height: 20),
+                const Text(
+                  'Expiration Date',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    filled: true,
+                    fillColor: Color.fromARGB(0, 255, 255, 255),
+                    hintText: 'MM/YY',
+                    border: OutlineInputBorder(),
+                  ),
+                  inputFormatters: [
+                    // Use a LengthLimitingTextInputFormatter to limit the input length
+                    LengthLimitingTextInputFormatter(5),
+                    // Restrict the input to only accept valid expiration date format (MM/YY)
+                    MaskTextInputFormatter(
+                        mask: '##/##', filter: {'#': RegExp(r'[0-9]')}),
+                  ],
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'CVV',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    filled: true,
+                    fillColor: Color.fromARGB(0, 255, 255, 255),
+                    hintText: 'Enter CVV',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                  obscureText: true,
+                  maxLength: 3,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'CVV is required';
+                    }
+                    if (value.length != 3) {
+                      return 'CVV must be 3 digits';
+                    }
+                    return null; // Return null for no validation error
+                  },
+                  // Add any necessary logic here for handling CVV input
+                ),
+                SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: _updateQuantity,
-                  // () {
-                  //   // Update the quantity based on the entered value
-                  //   setState(() {
-                  //     widget.sale.quantity =
-                  //         int.tryParse(_quantityController.text) ??
-                  //             widget.sale.quantity;
-                  //   });
-                  // }
-                  child: const Text('Update Quantity'),
+                  onPressed: () {
+                    if (_formKey.currentState!.validate()) {
+                      // Process form data (e.g., save to database, use for payment, etc.)
+                      // Access the entered card details: _cardNumber, _expirationDate, _cvv
+                      // For example: print('Card Number: $_cardNumber');
+                      print('Submit');
+                      handleApi(widget.total).then((value) {
+                        Map<String, dynamic> parsedValue = json.decode(value);
+
+                        Map<String, dynamic> paymentReceipt =
+                            parsedValue['paymentReceipt'];
+                        // Map<String, dynamic> paymentReceipt = json.decode(paymentReceiptString);
+                        if (true) {
+                          // Extracting paymentReceipt from the JSON data
+                          showDialog(
+                            context: context,
+                            builder: (BuildContext context) {
+                              return AlertDialog(
+                                title: Text('Payment Receipt'),
+                                content: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Approved Amount: \$${paymentReceipt['approvedAmount']['total'].toStringAsFixed(2)} ${paymentReceipt['approvedAmount']['currency']}',
+                                      style: const TextStyle(
+                                        fontSize:
+                                            18.0, // Adjust the font size as desired
+                                        fontWeight: FontWeight
+                                            .bold, // You can modify the font weight if needed
+                                      ),
+                                    ),
+                                    Text(
+                                      'Processor: ${paymentReceipt['processorResponseDetails']['processor']}',
+                                      style: const TextStyle(
+                                        fontSize:
+                                            18.0, // Adjust the font size as desired
+                                        fontWeight: FontWeight
+                                            .bold, // You can modify the font weight if needed
+                                      ),
+                                    ),
+                                    Text(
+                                      'Approval Status: ${paymentReceipt['processorResponseDetails']['approvalStatus']}',
+                                      style: const TextStyle(
+                                        fontSize:
+                                            18.0, // Adjust the font size as desired
+                                        fontWeight: FontWeight
+                                            .bold, // You can modify the font weight if needed
+                                      ),
+                                    ),
+                                    // Add other details you want to display here...
+                                  ],
+                                ),
+                                actions: <Widget>[
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                    },
+                                    child: Text('Close'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        } else {
+                          throw (Error());
+                        }
+                      });
+                    }
+                  },
+                  child: Text('Submit'),
                 ),
               ],
-            ),
+            )),
           ),
-        ],
-      ),
-    );
+        ));
   }
 
-  _updateQuantity() {
-    int newQuantity =
-        int.tryParse(_quantityController.text) ?? widget.sale.quantity;
-    setState(() {
-      widget.sale.quantity = newQuantity;
+  Future<String> handleApi(total) async {
+    var jsonBody = {
+      "amount": {"total": total, "currency": "USD"},
+      "source": {
+        "sourceType": "PaymentCard",
+        "card": {
+          "cardData": "4005550000000016",
+          "expirationMonth": "02",
+          "expirationYear": "2035"
+        }
+      },
+      "transactionDetails": {"captureFlag": true},
+      "transactionInteraction": {
+        "origin": "ECOM",
+        "eciIndicator": "CHANNEL_ENCRYPTED",
+        "posConditionCode": "CARD_NOT_PRESENT_ECOM"
+      },
+      "merchantDetails": {
+        "merchantId": "100008000003683",
+        "terminalId": "10000001"
+      }
+    };
+
+    // var jsonBody = {};
+    var key = 'ZxmiHz3CxGmUzWZ1SJZPcx0JHhCSPGYT';
+    var secret = 'xwn4X2VAN8ug4Jmvuj1kZbCEL7yoTBCnH3AicTtMEtx';
+    var clientRequestId = DateTime.now().millisecondsSinceEpoch;
+    var time = DateTime.now().millisecondsSinceEpoch;
+    var method = 'POST'; // Change this according to your request method
+    var rawSignature = '$key$clientRequestId$time${jsonEncode(jsonBody)}';
+    var hmacSha256 = Hmac(sha256, utf8.encode(secret));
+    var signatureBytes = hmacSha256.convert(utf8.encode(rawSignature)).bytes;
+    var computedHmac = base64.encode(signatureBytes);
+    // Now you can use the variables in your Flutter code
+
+    var headers = {
+      "Content-Type": "application/json",
+      "Authorization": computedHmac,
+      "Api-Key": key,
+      "Client-Request-Id": clientRequestId.toString(),
+      "Timestamp": time.toString(),
+      "Auth-Token-Type": "HMAC",
+      "Accept": "application/json",
+      "Accept-Language": "en"
+    };
+
+    var url = 'https://cert.api.fiservapps.com/ch/payments/v1/charges';
+
+    HttpClient httpClient = HttpClient();
+
+    // var response = await http.post(
+    //   Uri.parse(url),
+    //   body: requestBody,
+    //   headers: {
+    //   "Content-Type": "application/json",
+    //   "Authorization": computedHmac,
+    //   "Api-Key": key,
+    //   "Client-Request-Id": clientRequestId.toString(),
+    //   "Timestamp": time.toString(),
+    //   "Auth-Token-Type": "HMAC",
+    //   "Accept": 'application/json',
+    //   "Accept-Language": "en"
+    // },
+
+    // );
+
+    HttpClientRequest request = await httpClient.postUrl(Uri.parse(url));
+
+    // Set headers
+    headers.forEach((header, value) {
+      request.headers.set(header, value);
     });
-    Navigator.pop(context, newQuantity); // Send back the updated quantity
+
+    // Set the request body
+    request.write(jsonEncode(jsonBody));
+
+    // Get the response
+    HttpClientResponse response = await request.close();
+
+    // Read the response
+    Future<String> responseBody = response.transform(utf8.decoder).join();
+
+    return responseBody;
   }
 }
 
@@ -786,6 +938,19 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
             ElevatedButton(
               onPressed: () {
                 // Implement your payment logic here
+                double total = 0;
+                for (int i = 0; i < widget.cart.length; i++) {
+                  total += widget.cart[i].item.price * widget.cart[i].quantity;
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DetailScreen(
+                      total:
+                          total, // Pass the selected index to the next screen
+                    ),
+                  ),
+                );
                 _processPayment();
               },
               child: const Text('Pay'),
