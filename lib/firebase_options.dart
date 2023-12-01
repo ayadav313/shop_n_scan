@@ -3,31 +3,21 @@
 import 'package:firebase_core/firebase_core.dart'
     show Firebase, FirebaseOptions;
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+    show TargetPlatform, defaultTargetPlatform, kDebugMode, kIsWeb;
 
-/// Default [FirebaseOptions] for use with your Firebase apps.
-///
-/// Example:
-/// ```dart
-// / import 'firebase_options.dart';
-// / // ...
-// / await Firebase.initializeApp(
-// /   options: DefaultFirebaseOptions.currentPlatform,
-// / );
-/// ```
-///
-///
-
-import 'firebase_options.dart';
 
 Future<void> initializeFirebase() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    print('Firebase initialized successfully!');
+    if (kDebugMode) {
+      print('Firebase initialized successfully!');
+    }
   } catch (e) {
-    print('Error initializing Firebase: $e');
+    if (kDebugMode) {
+      print('Error initializing Firebase: $e');
+    }
   }
 }
 
