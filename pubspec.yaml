@@ -42,6 +42,8 @@ dependencies:
   google_maps_webservice: ^0.0.19+1
   geolocator: ^9.0.2
   geocoding: ^2.1.1
+  mask_text_input_formatter: ^2.7.0
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:
